@@ -1,0 +1,10 @@
+server:
+  port: 8085
+spring:
+  application:
+    name: otel-collector-api
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+config:
+  path: "./config.json"

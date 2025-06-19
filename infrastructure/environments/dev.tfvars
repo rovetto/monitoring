@@ -1,0 +1,7 @@
+environment = "dev"
+namespace = "monitoring"
+postgres_password = "devpassword"
+kube_config_path  = "./kubeconfig"
+api_url = "http://152.88.116.38:8092"
+image_registry = "gitlab-registry.pinet.ch/601/enterprise-applications/appmonitoring/"
+gitlab_ci_token = "placeholder"

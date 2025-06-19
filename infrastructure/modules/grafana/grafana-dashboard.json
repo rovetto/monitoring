@@ -1,0 +1,257 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "id": 1,
+  "links": [],
+  "panels": [
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "Prometheus"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "color-background"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "orange",
+                "value": 1
+              },
+              {
+                "color": "red",
+                "value": 2
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "expiry"
+            },
+            "properties": [
+              {
+                "id": "thresholds",
+                "value": {
+                  "mode": "absolute",
+                  "steps": [
+                    {
+                      "color": "green",
+                      "value": null
+                    },
+                    {
+                      "color": "red",
+                      "value": 0
+                    },
+                    {
+                      "color": "#EAB839",
+                      "value": 20
+                    },
+                    {
+                      "color": "#6ED0E0",
+                      "value": 30
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 10,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "11.5.2",
+      "targets": [
+        {
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "probe_success{source=\"blackbox\"}",
+          "format": "table",
+          "hide": false,
+          "instant": true,
+          "legendFormat": "{{service_name}}",
+          "range": false,
+          "refId": "A"
+        },
+        {
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "probe_http_status_code{source=\"blackbox\"}",
+          "format": "table",
+          "hide": false,
+          "instant": true,
+          "range": false,
+          "refId": "B"
+        },
+        {
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "probe_duration_seconds{source=\"blackbox\"}",
+          "format": "table",
+          "hide": false,
+          "instant": true,
+          "range": false,
+          "refId": "C"
+        },
+        {
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "(probe_ssl_earliest_cert_expiry - time()) / 86400",
+          "format": "table",
+          "hide": false,
+          "instant": true,
+          "legendFormat": "Tage bis Zertifikat",
+          "range": false,
+          "refId": "D"
+        }
+      ],
+      "title": "Service Checks",
+      "transformations": [
+        {
+          "id": "joinByField",
+          "options": {
+            "byField": "check_id",
+            "mode": "outer"
+          }
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time 2": true,
+              "Time 3": true,
+              "Time 4": true,
+              "Value #C": false,
+              "__name__ 1": true,
+              "__name__ 2": true,
+              "__name__ 3": true,
+              "environment 2": true,
+              "environment 3": true,
+              "environment 4": true,
+              "instance 2": true,
+              "instance 3": true,
+              "instance 4": true,
+              "job 1": true,
+              "job 2": true,
+              "job 3": true,
+              "job 4": true,
+              "service_name 2": true,
+              "service_name 3": true,
+              "service_name 4": true,
+              "source 1": true,
+              "source 2": true,
+              "source 3": true,
+              "source 4": true
+            },
+            "includeByName": {},
+            "indexByName": {},
+            "renameByName": {
+              "Time 1": "time",
+              "Time 2": "",
+              "Time 3": "",
+              "Time 4": "",
+              "Value #A": "success",
+              "Value #B": "status",
+              "Value #C": "duration",
+              "Value #D": "expiry",
+              "__name__ 1": "",
+              "environment 1": "environment",
+              "instance 1": "url",
+              "job 1": "",
+              "service_name 1": "service",
+              "source 1": "",
+              "source 4": ""
+            }
+          }
+        }
+      ],
+      "type": "table"
+    }
+  ],
+  "preload": false,
+  "refresh": "30s",
+  "schemaVersion": 40,
+  "tags": [
+    "monitoring",
+    "services"
+  ],
+  "templating": {
+    "list": [
+      {
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "datasource": {
+          "type": "prometheus",
+          "uid": "Prometheus"
+        },
+        "includeAll": true,
+        "name": "environment",
+        "options": [],
+        "query": "label_values(probe_success, environment)",
+        "refresh": 1,
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Applikation Monitoring",
+  "uid": "applikation-monitoring",
+  "version": 6,
+  "weekStart": ""
+}

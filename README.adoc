@@ -1,0 +1,422 @@
+= Architektur-Dokument für das Monitoring-Projekt
+
+:toc:
+:toclevels: 3
+
+== Einleitung und Überblick
+
+Dieses Dokument beschreibt die Architektur der Monitoring-Applikation, welche die Verfügbarkeit, Performance und den Status von verschiedenen Services (Ports, HTTP-/HTTPS-Endpunkte usw.) überwacht. Die Lösung basiert auf einer Kubernetes-Installation mit den Containern:
+
+- management-gui (Port 8091)
+- management-api (Port 8092)
+- prometheus-api (Port 8093) / prometheus (Port 9090)
+- grafana-api (Port 8094) / grafana (Port 3000)
+- otel-collector-api (Port 8095) / otel-collector (Port 4317/4318)
+- postgres (Port 5432)
+- loki (Port 3100)
+
+Alle Container laufen in einem Namespace: "monitor". Der Zugriff von extern geschieht über einen NodePort in Kombination mit unserem Nginx Proxy. Die *prometheus-api*, *grafana-api* und *otel-collector-api* sind als "Sidecar"-Komponenten konzipiert, die REST-Endpunkte zur Laufzeitkonfiguration anbieten.
+
+== Systemkontext (vereinfacht)
+
+[plantuml,system-kontext,svg]
+----
+@startuml
+title Systemkontext: Monitoring-Applikation
+
+actor "IT-Verantwortliche\n(Interner Nutzer)" as Support
+actor "Business-Verantwortliche\n(Externe/Interne Nutzer)" as Business
+
+rectangle KubernetesCluster {
+  node "management-gui" as GUI
+  node "management-api" as API
+  node "prometheus-api" as PromAPI
+  node "grafana-api" as GrafAPI
+  node "otel-collector-api" as OtelAPI
+  node "postgres" as DB
+  node "loki" as Loki
+}
+
+' Beziehungen
+Support --> GUI : Monitoring verwalten,\nEinstellungen vornehmen
+Business --> GUI : Status einsehen,\nService-Eskalationen verfolgen
+
+GUI --> API : REST-Aufrufe
+API --> DB : Datenbankzugriff
+API --> PromAPI : REST-Konfiguration
+API --> GrafAPI : REST-Konfiguration
+API --> OtelAPI : REST-Konfiguration
+
+' Neuer Hinweis: otel-collector-api liefert Daten an Loki
+OtelAPI --> Loki : Logs / Metriken\n(Fehleranalyse)
+
+@enduml
+----
+
+Das Diagramm verdeutlicht die wichtigsten Akteure, ihre Zugriffe auf das System sowie die Datenflüsse zwischen den Containern. Neu hinzugefügt ist der Datenstrom von *otel-collector-api* zu *Loki*, um Log- und Telemetriedaten zu sammeln und für die Fehleranalyse bereitzustellen.
+
+== Anwendungsfalldiagramm
+
+Nachfolgend ein Beispiel-Anwendungsfalldiagramm mit den zentralen Use-Cases, welche von IT-Verantwortlichen und Business-Verantwortlichen genutzt werden.
+
+[plantuml,anwendungsfaelle,svg]
+----
+@startuml
+title Anwendungsfaelle Monitoring
+
+actor "IT-Verantwortliche" as Support
+actor "Business-Verantwortliche" as Business
+
+usecase "Port (Service) konfigurieren" as UC1
+usecase "Wartungsfenster setzen" as UC2
+usecase "Alerting/Status einsehen" as UC3
+usecase "E-Mail-Alarm erhalten" as UC4
+usecase "Uebersicht Ausfaelle" as UC5
+
+Support -- UC1
+Support -- UC2
+Support -- UC3
+Business -- UC3
+Business -- UC4
+Business -- UC5
+
+@enduml
+----
+
+== High-Level Komponentendiagramm
+
+[plantuml,komponenten,svg]
+----
+@startuml
+allow_mixing
+title High-Level Komponentendiagramm (mit NGINX Proxy und Kubernetes-Rahmen)
+
+' Externer Nutzer
+actor "User" as user
+
+' Externer Proxy im "Extern"-Block
+rectangle "Extern" {
+  component "NGINX Proxy" as proxy
+}
+
+' Kubernetes-Rahmen
+rectangle "Kubernetes Cluster" {
+  component "management-gui" as GUI
+  component "management-api" as MAPI
+  component "prometheus-api\n(Sidecar)" as PromAPI
+  component "grafana-api\n(Sidecar)" as GrafAPI
+  component "otel-collector-api\n(Sidecar)" as OtelAPI
+  database "Postgres" as DB
+  component "Loki" as Loki
+}
+
+' Verbindungen
+user -[#blue]-> proxy : HTTPS
+proxy -[#blue]-> GUI : HTTP
+GUI --> MAPI : REST (HTTP)
+MAPI --> DB : JDBC
+MAPI --> PromAPI : REST-Konfig
+MAPI --> GrafAPI : REST-Konfig
+MAPI --> OtelAPI : REST-Konfig
+OtelAPI --> Loki : Logs
+
+@enduml
+
+----
+
+Die *Sidecar-APIs* (prometheus-api, grafana-api, otel-collector-api) sind jeweils zuständig für die Konfiguration und Datenaufnahme bzw. -weiterleitung des Hauptsystems (Prometheus, Grafana, OpenTelemetry Protokoll). Sie laufen zwar als eigenständige Container, müssen aber zusammen mit der Hauptanwendung gestartet und verwaltet werden.
+
+== Beispiel-Sequenzdiagramm: Regelmässige Port prüfung
+
+[plantuml,portcheck,svg]
+----
+@startuml
+title Regelmaessige Portpruefung
+
+participant "management-api" as MAPI
+participant "Postgres DB" as DB
+participant "Service-Port" as Port
+participant "Ticketsystem\n(Key2Help)" as TicketSys
+participant "Mail-Server" as Mail
+
+MAPI -> DB: Lese zu pruefende Ports\nund Testmethoden
+loop für jeden Port
+  MAPI -> Port: Fuehre Testmethode aus\n(HTTP, Socket, usw.)
+  alt OK
+    MAPI -> DB: Status aktualisieren (gruen)
+  else Fehler
+    MAPI -> DB: Status aktualisieren (orange oder rot)
+    alt 3 Fehler in Folge -> Rot
+      MAPI -> Mail: E-Mail an Verantwortliche
+      MAPI -> TicketSys: Alarm-REST-Aufruf
+    end
+  end
+end
+@enduml
+----
+
+== Datenmodell (vereinfacht)
+
+[plantuml,datenmodell,svg]
+----
+@startuml
+title Vereinfachtes Datenmodell
+
+class Service {
+  UUID id
+  String name
+  String beschreibung
+  --
+  1..* Ports
+  1..* Owners
+}
+
+class Port {
+  UUID id
+  int portnummer
+  String protokoll
+  String env
+  String status
+  --
+  1 Service
+  0..* TestMethoden
+}
+
+class TestMethode {
+  UUID id
+  String typ (z.B. SocketCheck, HTTPCheck)
+  boolean isCertificateCheck
+}
+
+class Owner {
+  UUID id
+  String vorname
+  String nachname
+  String email
+  String rolle (IT, Business)
+}
+
+class Wartungsfenster {
+  UUID id
+  Date start
+  Date ende
+  boolean aktiv
+  --
+  0..* Ports
+}
+
+Service "1" -- "0..*" Port
+Port "1" -- "0..*" TestMethode
+Service "1" -- "0..*" Owner
+Wartungsfenster "1" -- "0..*" Port
+@enduml
+----
+
+== Infrastruktur und Deployment
+
+1. *Kubernetes Single-Instanz*:
+- DEV, TEST, PROD getrennt, je eine VM (oder später mehr).
+
+2. *GitLab-CI/CD*:
+- Automatisiertes Deployment, Container Images werden gebaut und über Terraform.
+- Leicht skalierbar dank Kubernetes.
+
+3. *Storage & Backup*:
+- Daten in Postgres (Container oder externer DB-Host).
+- VMware-Snapshots für schnelle Wiederherstellung.
+
+4. *Security*:
+- Zugriff intern via HTTP im gleichen Namespace.
+- Nach aussen via HTTPS über Nginx.
+- Admin-Zugang und Standardberechtigungsverfahren für Alarm-Empfänger und Systemrechte.
+
+== Sidecar-Konzept
+
+*prometheus-api*, *grafana-api* und *otel-collector-api* sind jeweils Sidecar-Dienste bzw. separate Container. Sie werden in Kombination mit den Hauptdiensten (Prometheus, Grafana, Otel Collector) deployed und ermöglichen:
+
+- Laufzeitkonfiguration (z.B. per REST-API Befehle für Dashboards oder Prometheus-Abfragen)
+- mögliche Erweiterungen/Plugin-Funktionalität, ohne den Hauptdienst direkt anzupassen
+- Eigenständige Versionierung und Wartung
+
+Oft sind Sidecars nah an ihren Hauptcontainern gekapselt. Dadurch kann man die Logik (z.B. Authentifizierung, Zieldatenverarbeitung) flexibel anpassen.
+
+== Qualitätsanforderungen
+
+- *Performance*: Durch Containerisierung und Skalierung kann man bei Bedarf weitere Instanzen hochfahren.
+- *Verfügbarkeit*: Ein (zukünftig) vollwertiges Kubernetes-Cluster ermöglicht Redundanz, je nach Ausbaustufe.
+- *Wartbarkeit*: Alle Definitionen liegen in Gitlab, Container kännen lokal getestet werden, automatisierte Rollouts, klare Module.
+- *Sicherheit*: Keine Personendaten, interne E-Mail-Benachrichtigungen, generelle Hardening-Massnahmen (Images, Netzwerk).
+
+== Zusammenfassung
+
+Diese Architektur deckt die Anforderungen ab: regelmässige Prüfungen von Ports mit verschiedenen Testmethoden, Alerting bei Fehlern, flexible Konfiguration per GUI, Datenhaltung in Postgres und Visualisierung/Monitoring in Grafana/Prometheus. Die *otel-collector-api* sendet zur Fehleranalyse Telemetrie an Loki. Sämtliche Module laufen in einem Kubernetes-Cluster und sind dank CI/CD in wenigen Minuten ausrollbar oder aktualisierbar.
+
+== Verfeinerte Modelle
+
+=== Anwendungsfalldiagramm
+
+[plantuml, format="png", id="usecase"]
+....
+actor "Monitoringsystem"
+actor "Benutzer"
+actor "ICT-Contact"
+actor "Service Owner"
+actor "Alerting-Tool"
+
+"Monitoringsystem" --> "Applikation überwachen"
+"Monitoringsystem" --> "Applikation bewerten"
+"Monitoringsystem" --> "Alarmierung und Eskalation durchführen"
+"Monitoringsystem" --> "Geschäftskritische Applikationen erfassen"
+"Benutzer" --> "Nutzerfeedback sammeln"
+"Applikation überwachen" .> "Verfügbarkeit messen" : <<include>>
+"ICT-Contact" --> "Alarmierung und Eskalation durchführen"
+"Service Owner" --> "Alarmierung und Eskalation durchführen"
+"Alerting-Tool" --> "Alarmierung und Eskalation durchführen"
+....
+
+=== Klassendiagramm (nicht final)
+
+[plantuml, format="png", id="klassendiagramm"]
+....
+class Application {
+  +id: int
+  +name: string
+  +zone_id: int
+  +current_state_id: int
+}
+
+class Zone {
+  +id: int
+  +type: string
+}
+
+class Probe {
+  +id: int
+  +application_id: int
+  +reachability: boolean
+  +certificate_present: boolean
+  +performance_ms: int
+  +timestamp: datetime
+}
+
+class Feedback {
+  +id: int
+  +application_id: int
+  +type: string
+  +details: string
+  +timestamp: datetime
+}
+
+class State {
+  +id: int
+  +name: string
+}
+
+class Escalation {
+  +id: int
+  +application_id: int
+  +timestamp: datetime
+  +details: string
+}
+
+class Subscribers {
+  +id: int
+  +email: string
+  +role: string
+}
+
+class ProbeSubscribers {
+  +probe_id: int
+  +subscriber_id: int
+}
+
+Application --> Zone
+Application --> State
+Application "1" --> "0..*" Probe
+Application "1" --> "0..*" Feedback
+Application "1" --> "0..*" Escalation
+Probe "0..*" --> "0..*" Subscribers : ProbeSubscribers
+....
+
+=== Zustandsdiagramm
+
+[plantuml, format="png", id="zustandsdiagramm"]
+....
+[*] --> Green
+Green --> Orange : Fehler auftritt
+Orange --> Red : >3 Fehler hintereinander
+Green --> Blue : Wartung beginnt
+Orange --> Blue : Wartung beginnt
+Red --> Blue : Wartung beginnt
+Blue --> Green : Wartung endet, keine Fehler
+Red --> Green : Fehler behoben
+....
+
+=== Aktivitätsdiagramm
+
+[plantuml, format="png", id="aktivitaetsdiagramm"]
+....
+@startuml
+start
+:Zustand wird Rot;
+:Eskalationsmail senden;
+if (Update im Alerting-Tool?) then (Ja)
+  :Update durchführen;
+endif
+stop
+@enduml
+....
+
+=== Sequenzdiagramm
+
+[plantuml, format="png", id="sequenzdiagramm"]
+....
+actor "Monitoringsystem"
+participant "Application"
+
+"Monitoringsystem" -> "Application": Anfrage senden
+"Application" --> "Monitoringsystem": Status zurückgeben
+"Monitoringsystem" -> "Monitoringsystem": Status, Zertifikat, Performance prüfen
+"Monitoringsystem" -> "Probe": Messung speichern
+"Monitoringsystem" -> "Application": Zustand aktualisieren
+alt Zustand = Rot
+  "Monitoringsystem" -> "Subscribers": Eskalationsmail senden
+  "Monitoringsystem" -> "Alerting-Tool": Update (optional)
+end
+....
+
+
+== Notizen
+
+Falls der Container nicht startet:
+
+Finde den Container mit:
+
+----
+kubectl get pods -n monitoring
+----
+
+Liste der Container:
+
+----
+NAME                                    READY   STATUS                       RESTARTS   AGE
+grafana-local-7b76f9749d-5j8hp          2/2     Running                      0          8m31s
+loki-local-7569b86798-xv625             0/1     CreateContainerConfigError   0          8m31s
+management-api-local-7785bb4f8-78tdp    1/1     Running                      0          8m32s
+management-gui-local-85fdcf589d-p9lk9   1/1     Running                      0          8m32s
+otel-collector-local-576bf59844-pkng7   2/2     Running                      0          8m31s
+postgres-local-7c86bffbcc-s6qw6         1/1     Running                      0          8m31s
+prometheus-local-fb664bb6f-6z8wv        2/2     Running                      0          8m31s
+----
+
+Wähle den Namen des Containers, der fehlschlägt und Analysiere das log:
+----
+kubectl describe pod loki-local-7569b86798-xv625 -n monitoring
+----
+
+Lösche den Container:
+
+----
+kubectl delete pod loki-local-7569b86798-xv625 -n monitoring
+terraform apply
+----

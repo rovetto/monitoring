@@ -1,0 +1,37 @@
+version: '3'
+
+vars:
+  NAMESPACE: monitoring
+
+tasks:
+  start:
+    desc: "Starte Port-Forwarding für mehrere Dienste"
+    cmds:
+      - |
+        SERVICES=(
+          "management-gui-local 8091:8091"
+          "management-api-local 8092:8092"
+          "prometheus-api-local 8093:8093"
+          "prometheus-local 9090:9090"
+          "grafana-api-local 8094:8094"
+          "grafana-local 3000:3000"
+          "otel-collector-api-local 8095:8095"
+          "otel-collector-local 4317:4317 4318:4318"
+          "postgres-local 5432:5432"
+        )
+        for SERVICE in "${SERVICES[@]}"; do
+          NAME=$(echo $SERVICE | awk '{print $1}')
+          PORTS=$(echo $SERVICE | cut -d' ' -f2-)
+          SVC="svc/$NAME"  # Service-Name definieren
+        
+          echo "Forwarding $NAME ($SVC) auf Ports $PORTS"
+          kubectl port-forward -n {{.NAMESPACE}} $SVC $PORTS &
+        done
+        
+        wait
+    silent: false
+
+  stop:
+    desc: "Beende alle Port-Forwarding-Prozesse"
+    cmds:
+      - pkill -f "kubectl port-forward" || echo "Keine aktiven Port-Forwards gefunden."

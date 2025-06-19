@@ -1,0 +1,25 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'web_check'
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+
+      - targets: ["https://pinet.ch"]
+        labels:
+          check_id: "5e2134f2-cfdd-4137-9f25-d8c911f8721a"
+          service_name: "URL"
+          environment: "prod"
+          source: "blackbox"
+
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: blackbox-exporter-local.monitoring.svc.cluster.local:9115

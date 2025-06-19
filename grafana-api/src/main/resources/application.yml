@@ -1,0 +1,10 @@
+server:
+  port: 8094
+spring:
+  application:
+    name: grafana-api
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+config:
+  path: "./config.json"

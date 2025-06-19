@@ -1,0 +1,10 @@
+server:
+  port: 8093
+spring:
+  application:
+    name: prometheus-api
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+config:
+  path: "./config.json"
