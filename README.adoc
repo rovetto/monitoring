@@ -5,6 +5,10 @@
 
 == Einleitung und Überblick
 
+Notiz: Die im Dokument integrierten Diagramme werden von Github leider nicht gerendert.
+
+Die gleichnamige PDF-Datei enthält die gerenderten Diagramme.
+
 Dieses Dokument beschreibt die Architektur der Monitoring-Applikation, welche die Verfügbarkeit, Performance und den Status von verschiedenen Services (Ports, HTTP-/HTTPS-Endpunkte usw.) überwacht. Die Lösung basiert auf einer Kubernetes-Installation mit den Containern:
 
 - management-gui (Port 8091)
